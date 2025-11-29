@@ -1,0 +1,20 @@
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Output directories
+results/
+paper_results/
+logs/
+replicates_DBSCAN/
+plans/
+
+# Data
+data/
+
+# System
+.DS_Store
+Thumbs.db
