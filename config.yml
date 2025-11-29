@@ -34,12 +34,12 @@ kendall:
 
 paths:
   root: "."
-  envi_before: "data/envi/B"
-  envi_after:  "data/envi/A"
-  occ: "data/occ/thinned_DBSCAN"
+  envi_before: "BioHabs/data/envi/B"
+  envi_after:  "BioHabs/data/envi/A"
+  occ: "BioHabs/data/occ/thinned_DBSCAN"
   results_h2o: "results/H2O"
   results_ssdm: "results/SSDM"
   plans: "plans"
-  clean: "data/clean"
-  raw: "data/raw"
+  clean: "BioHabs/data/clean"
+  raw: "BioHabs/data/raw"
   logs: "logs"

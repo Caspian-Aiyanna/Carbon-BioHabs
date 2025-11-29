@@ -222,39 +222,39 @@ for (f in sort(all_rep)) {
   esdm <- tryCatch(
     {
       if (toupper(cfg$mode) == "REPRO") {
-        # REPRO: 5 replicates, 1 core (literal values)
+        # REPRO: 5 replicates, 1 core
         SSDM::ensemble_modelling(
           algorithms = algos,
           Occurrences = occ_ssdm,
           Env = env_use,
           Xcol = "lon",
           Ycol = "lat",
-          rep = 5, # LITERAL
+          rep = 5,
           cv = "holdout",
           cv.param = c(0.7, 2),
           ensemble.metric = "AUC",
           ensemble.thresh = 0.6,
           weight = TRUE,
           uncertainty = TRUE,
-          cores = 1, # LITERAL
+          cores = 1,
           verbose = FALSE
         )
       } else {
-        # FAST: 5 replicates, 1 core (literal values)
+        # FAST: 5 replicates, 1 core
         SSDM::ensemble_modelling(
           algorithms = algos,
           Occurrences = occ_ssdm,
           Env = env_use,
           Xcol = "lon",
           Ycol = "lat",
-          rep = 5, # LITERAL
+          rep = 5,
           cv = "holdout",
           cv.param = c(0.7, 2),
           ensemble.metric = "AUC",
-          ensemble.thresh = 0.6,
+          ensemble.thresh = 0.4,
           weight = TRUE,
           uncertainty = TRUE,
-          cores = 1, # LITERAL
+          cores = 1,
           verbose = FALSE
         )
       }

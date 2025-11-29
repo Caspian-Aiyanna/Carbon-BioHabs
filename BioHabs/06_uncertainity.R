@@ -65,6 +65,15 @@ get_reps <- function(method, ele, run, root) {
     reps <- list.dirs(d, recursive = FALSE)
     f <- list.files(reps, pattern = paste0("ESDM_", sp, ".*\\.tif$"), full.names = TRUE)
     return(f)
+  } else if (method == "SSF") {
+    # New logic for iSSA replicates
+    d <- file.path(root, "iSSA", run, sp, "replicates")
+    if (!dir.exists(d)) {
+      return(character(0))
+    }
+    # Look for SSF_Species_repX.tif
+    f <- list.files(d, pattern = paste0("SSF_", sp, "_rep.*\\.tif$"), full.names = TRUE)
+    return(f)
   }
   character(0)
 }
@@ -72,7 +81,8 @@ get_reps <- function(method, ele, run, root) {
 get_single <- function(method, ele, run, root) {
   sp <- paste0(ele, run)
   if (method == "SSF") {
-    d <- file.path(root, "SSF", run, sp)
+    d <- file.path(root, "iSSA", run, sp)
+    # Try the new iSSA single output if replicates fail, or the old one
     f <- first_existing(
       file.path(d, paste0(sp, "_SSF_rsf_0to1.tif")),
       file.path(d, paste0(sp, "_SSF_rsf.tif"))
@@ -97,6 +107,13 @@ for (ele in elephants) {
     }
     r_h2o_reps <- rast(h2o_files)
 
+    # Create template from first H2O raster for alignment
+    template <- r_h2o_reps[[1]]
+
+    # Calculate H2O mean and variance
+    M_h2o <- mean(r_h2o_reps, na.rm = TRUE)
+    V_h2o <- app(r_h2o_reps, fun = var, na.rm = TRUE)
+
     # SSDM Replicates
     ssdm_files <- get_reps("SSDM", ele, run, opt$root)
     if (length(ssdm_files) == 0) {
@@ -104,34 +121,38 @@ for (ele in elephants) {
       next
     }
     r_ssdm_reps <- rast(ssdm_files)
-
-    # SSF Single (Assume no replicates for now)
-    ssf_file <- get_single("SSF", ele, run, opt$root)
-    if (is.null(ssf_file)) {
-      message("  No SSF file found. Skipping.")
-      next
-    }
-    r_ssf <- rast(ssf_file)
-
-    # Align everything to H2O grid
-    template <- r_h2o_reps[[1]]
     r_ssdm_reps <- resample(r_ssdm_reps, template)
-    r_ssf <- resample(r_ssf, template)
 
-    # 2. Compute Moments (Mean & Variance)
-    # ------------------------------------
-    # H2O
-    M_h2o <- mean(r_h2o_reps, na.rm = TRUE)
-    V_h2o <- app(r_h2o_reps, fun = var, na.rm = TRUE)
-
-    # SSDM
+    # Calculate SSDM mean and variance
     M_ssdm <- mean(r_ssdm_reps, na.rm = TRUE)
     V_ssdm <- app(r_ssdm_reps, fun = var, na.rm = TRUE)
 
-    # SSF (Proxy variance: mean of H2O and SSDM variance, scaled?)
-    # Since we lack SSF replicates, we assume its uncertainty is comparable to the others
-    M_ssf <- r_ssf
-    V_ssf <- (V_h2o + V_ssdm) / 2 # Fallback assumption
+    # SSF (Replicates OR Single)
+    ssf_files <- get_reps("SSF", ele, run, opt$root)
+
+    if (length(ssf_files) > 1) {
+      # Case A: We have replicates (from 01_a_iSSA.R)
+      message(sprintf("  Found %d SSF replicates. Calculating true variance.", length(ssf_files)))
+      r_ssf_reps <- rast(ssf_files)
+      r_ssf_reps <- resample(r_ssf_reps, template)
+
+      M_ssf <- mean(r_ssf_reps, na.rm = TRUE)
+      V_ssf <- app(r_ssf_reps, fun = var, na.rm = TRUE)
+    } else {
+      # Case B: Fallback to single file (Old 01_ssf_to_rasters.R)
+      ssf_file <- get_single("SSF", ele, run, opt$root)
+      if (is.null(ssf_file)) {
+        message("  No SSF file found. Skipping.")
+        next
+      }
+      r_ssf <- rast(ssf_file)
+      r_ssf <- resample(r_ssf, template)
+
+      message("  Using single SSF file with variance proxy.")
+      M_ssf <- r_ssf
+      # Proxy variance: mean of H2O and SSDM variance
+      V_ssf <- (V_h2o + V_ssdm) / 2
+    }
 
     # 3. Hybrid Ensemble (Inverse Variance Weighted)
     # ----------------------------------------------

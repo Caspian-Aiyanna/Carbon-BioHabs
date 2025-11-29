@@ -13,7 +13,7 @@ replicates_DBSCAN/
 plans/
 
 # Data
-data/
+#data/
 
 # System
 .DS_Store
