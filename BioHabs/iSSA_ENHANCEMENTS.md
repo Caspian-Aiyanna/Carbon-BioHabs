@@ -1,13 +1,10 @@
-# ✅ iSSA Enhancement Complete!
+# iSSA!
+### 1. iSSA Movement Covariates
 
-## What Was Added
-
-### 1. TRUE iSSA Movement Covariates ✅
-
-Your script now includes **Signer et al. (2024) compliant** movement covariates:
+Script includes **Signer et al. (2024) movement covariates:
 
 ```R
-# Movement terms (NEW!)
+# Movement terms
 sl_        # Step length (how far elephant moved)
 log_sl_    # Log step length (gamma distribution)
 cos_ta_    # Cosine turn angle (directional persistence)
@@ -19,13 +16,11 @@ bio1_z, bio12_z, Elevation_z, NDVI_z, ...
 case_ ~ sl_ + log_sl_ + cos_ta_ + bio1_z + bio12_z + ... + strata(step_id_)
 ```
 
-### 2. What This Means
+### 2. Formulation
+**Where do elephants prefer to be?**
 
-**Before** (habitat-only SSF):
-- Only answered: "Where do elephants prefer to be?"
-
-**After** (integrated iSSA):
-- Answers: "How do elephants move?" (movement covariates)
+**integrated iSSA framework**
+- "How do elephants move?" (movement covariates)
 - AND: "Where do they choose to go?" (habitat covariates)
 - Integration of movement behavior + habitat selection
 
@@ -41,18 +36,16 @@ case_ ~ sl_ + log_sl_ + cos_ta_ + bio1_z + bio12_z + ... + strata(step_id_)
 
 ## Additional Enhancements Added
 
-### ✅ 1. Covariate Type Classification
+### 1. Covariate Type Classification
 - Coefficients now labeled as "Movement" or "Habitat"
-- Easier interpretation in output tables
 
-### ✅ 2. Enhanced Logging
+### 2. Logging
 - Reports number of movement + habitat covariates
 - Tracks data filtering at each step
 
-### ✅ 3. Data Quality Checks
+### 3. Data Quality
 - Ensures finite movement covariates
 - Filters invalid steps before modeling
-
 ---
 
 ## Still To Add (Optional)
@@ -112,9 +105,8 @@ NDVI_z,Habitat,0.42,0.05,8.4,<0.001,0.32,0.52
 ## Scientific Impact
 
 This is now a **publication-ready iSSA** that:
-- ✅ Follows Signer et al. (2024) protocol
-- ✅ Separates movement from habitat selection
-- ✅ Provides mechanistic insights into elephant behavior
-- ✅ Suitable for high-impact journals
+- Signer et al. (2024) protocol
+- Separates movement from habitat selection
+- Provides mechanistic insights into elephant behavior
 
-**Your analysis is now state-of-the-art!** 🎉
+**state-of-the-art!**
