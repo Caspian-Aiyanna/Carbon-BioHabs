@@ -121,9 +121,9 @@ main <- function() {
   for (run in RUNS) {
     log_section(paste("PROCESSING RUN:", run))
 
-    # Stage 1: SSF to Rasters
-    log_section(paste("STAGE 1: SSF TO RASTERS - Run", run))
-    run_script("01_ssf_to_rasters.R",
+    # Stage 1: iSSA to Rasters
+    log_section(paste("STAGE 1: iSSA TO RASTERS - Run", run))
+    run_script("01_a_iSSA.R",
       args = list(run = run, mode = MODE),
       required = TRUE
     )
@@ -159,7 +159,7 @@ main <- function() {
 
   # Stage 6: Uncertainty Analysis (combines both runs)
   log_section("STAGE 6: UNCERTAINTY ANALYSIS & CARBON CALCULATION")
-  run_script("06_uncertainity.R",
+  run_script("06_uncertainty.R",
     args = list(
       tagA = "A",
       tagB = "B",

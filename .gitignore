@@ -12,9 +12,18 @@ logs/
 replicates_DBSCAN/
 plans/
 
-# Data
-#data/
-
 # System
 .DS_Store
 Thumbs.db
+
+#Data
+BioHabs/data/envi/*/stack/stack.tif
+BioHabs/data/
+
+# renv
+renv/library/
+renv/python/
+renv/staging/
+renv/local/
+renv/lock/
+

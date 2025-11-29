@@ -31,7 +31,7 @@ The pipeline consists of **6 main stages**, executed sequentially:
     *   **Input**: Prediction Rasters from all three methods.
     *   **Output**: Comparison Tables (`per_rep_metrics.csv`), Difference Maps.
 
-6.  **`06_uncertainity.R`**:
+6.  **`06_uncertainty.R`**:
     *   **Purpose**: Performs the final uncertainty decomposition and Carbon Sequestration Potential (CSP) calculation.
     *   **Input**: Prediction Rasters (H2O, SSDM, SSF), Biomass Baseline Raster.
     *   **Output**: Hybrid Ensemble Suitability, Total Uncertainty Map, CSP Map.
@@ -71,7 +71,7 @@ You can also run individual stages if needed:
 Rscript BioHabs/01_ssf_to_rasters.R --run A --mode FAST
 
 # Example: Run Stage 6 (Uncertainty)
-Rscript BioHabs/06_uncertainity.R
+Rscript BioHabs/06_uncertainty.R
 ```
 
 ## Directory Structure

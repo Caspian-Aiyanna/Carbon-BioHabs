@@ -25,7 +25,7 @@ option_list <- list(
   make_option(c("-b", "--tagB"), type = "character", default = "B", help = "After tag [default %default]"),
   make_option(c("-r", "--root"), type = "character", default = "results", help = "Results root [default %default]"),
   make_option(c("--env_dir"), type = "character", default = "data/envi", help = "Environment dir for Biomass [default %default]"),
-  make_option(c("-o", "--outdir"), type = "character", default = "paper_results/uncertainty", help = "Output root [default %default]")
+  make_option(c("-o", "--outdir"), type = "character", default = "results/uncertainty", help = "Output root [default %default]")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
 
