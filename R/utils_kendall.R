@@ -3,7 +3,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(readr)
   library(ggplot2)
-  library(tibble)   # we call tibble() below
+  library(tibble)
 })
 
 # Greedy Kendall-pruning: drop vars until all |tau| < cutoff

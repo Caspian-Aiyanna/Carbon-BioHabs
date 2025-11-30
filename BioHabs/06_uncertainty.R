@@ -94,7 +94,13 @@ get_single <- function(method, ele, run, root) {
 
 # Main Analysis
 for (ele in elephants) {
+  # Initialize list to store plot data for this elephant across runs
+  ele_plot_data <- list()
+
   for (run in c(opt$tagA, opt$tagB)) {
+    # Explicitly clear variables to prevent leakage
+    suppressWarnings(rm(M_h2o, V_h2o, M_ssdm, V_ssdm, M_ssf, V_ssf, W_h2o, W_ssdm, W_ssf))
+
     message(sprintf("\nProcessing %s Run %s...", ele, run))
 
     # 1. Load Models
@@ -169,14 +175,33 @@ for (ele in elephants) {
 
     # 4. Uncertainty Decomposition
     # ----------------------------
-    # Total Uncertainty: sigma_total = sqrt(1 / sum(1/sigma_k^2)) = sqrt(1/W_sum)
-    Sigma_total <- sqrt(1 / W_sum)
+    # Calculate Normalized Weights
+    W_norm_h2o <- W_h2o / W_sum
+    W_norm_ssdm <- W_ssdm / W_sum
+    W_norm_ssf <- W_ssf / W_sum
+
+    # Within-Model Variance (Weighted Average of Variances)
+    Var_within <- (W_norm_h2o * V_h2o) + (W_norm_ssdm * V_ssdm) + (W_norm_ssf * V_ssf)
+
+    # Between-Model Variance (H2O vs SSDM ONLY)
+    W_sum_sdm <- W_h2o + W_ssdm
+    R_sdm <- (W_h2o * M_h2o + W_ssdm * M_ssdm) / W_sum_sdm
+
+    W_n_h2o_sdm <- W_h2o / W_sum_sdm
+    W_n_ssdm_sdm <- W_ssdm / W_sum_sdm
+
+    Var_between_sdm <- (W_n_h2o_sdm * (M_h2o - R_sdm)^2) +
+      (W_n_ssdm_sdm * (M_ssdm - R_sdm)^2)
+
+    Share_SDM <- W_sum_sdm / W_sum
+    Var_between_contribution <- Var_between_sdm * Share_SDM
+
+    # Total Uncertainty
+    Sigma_total <- sqrt(Var_within + Var_between_contribution)
     names(Sigma_total) <- "Uncertainty_Total"
 
     # 5. Carbon Sequestration Potential (CSP)
     # ---------------------------------------
-    # CSP = Base + (1.5 * R_hybrid)
-    # Try to load Biomass (AGB)
     agb_file <- first_existing(
       "BioHabs/data/envi/raw/ORNL_Total_Carbon_2010_30m.tif",
       "BioHabs/data/envi/raw/ORNL_AGB_Carbon_2010_30m.tif",
@@ -195,18 +220,35 @@ for (ele in elephants) {
       Base_Carbon <- template * 0 + 100
     }
 
-    Elephant_Effect <- 1.5 # MgC/yr
-    CSP <- Base_Carbon + (Elephant_Effect * R_hybrid)
+    # Define population size based on elephant ID (Herds vs Bulls)
+    # E3=30, E4=20, E5=20 (Herds); Others=1 (Bulls)
+    pop_size <- switch(ele,
+      "E3" = 30,
+      "E4" = 20,
+      "E5" = 20,
+      1
+    )
+
+    Elephant_Effect <- 1.5 # MgC/yr per elephant
+    CSP <- Base_Carbon + (Elephant_Effect * pop_size * R_hybrid)
     names(CSP) <- "CSP"
+
+    message(sprintf("  Calculating CSP with Population Size: %d (Max Effect: %.1f MgC)", pop_size, 1.5 * pop_size))
 
     # 6. Save Outputs
     # ---------------
     out_dir <- file.path(opt$outdir, ele, "combined")
-    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    dir.create(out_dir, recursive = TRUE, showWarnings = TRUE)
 
     writeRaster(R_hybrid, file.path(out_dir, sprintf("%s_%s_Hybrid_Ensemble.tif", ele, run)), overwrite = TRUE)
     writeRaster(Sigma_total, file.path(out_dir, sprintf("%s_%s_Uncertainty_Total.tif", ele, run)), overwrite = TRUE)
     writeRaster(CSP, file.path(out_dir, sprintf("%s_%s_CSP.tif", ele, run)), overwrite = TRUE)
+
+    # Calculate "Lift" (Added Carbon)
+    Lift <- Elephant_Effect * pop_size * R_hybrid
+    names(Lift) <- "Carbon_Lift"
+
+    writeRaster(Lift, file.path(out_dir, sprintf("%s_%s_Carbon_Lift.tif", ele, run)), overwrite = TRUE)
 
     # Save plots
     fig_dir <- file.path(opt$outdir, ele, "figures")
@@ -222,28 +264,87 @@ for (ele in elephants) {
     dev.off()
 
     png(file.path(fig_dir, sprintf("%s_%s_CSP.png", ele, run)), width = 1200, height = 1000, res = 150)
-    plot(CSP, main = paste(ele, run, "Carbon Sequestration Potential (MgC)"), col = viridis(100), axes = FALSE)
+    plot(CSP, main = paste0(ele, " (n=", pop_size, ") ", run, " CSP (MgC)"), col = viridis(100), axes = FALSE)
     dev.off()
 
-    # Scatter Plots
-    # Create a data frame for plotting (sample if too large)
-    df_plot <- as.data.frame(c(R_hybrid, Sigma_total), na.rm = TRUE)
-    colnames(df_plot) <- c("Suitability", "Uncertainty")
+    png(file.path(fig_dir, sprintf("%s_%s_Carbon_Lift.png", ele, run)), width = 1200, height = 1000, res = 150)
+    plot(Lift, main = paste0(ele, " (n=", pop_size, ") ", run, " Added Carbon (MgC)"), col = viridis(100), axes = FALSE)
+    dev.off()
 
+    # Combined Panel Plot (Hybrid | Uncertainty | CSP)
+    png(file.path(fig_dir, sprintf("%s_%s_Panel.png", ele, run)), width = 3000, height = 1000, res = 150)
+    par(mfrow = c(1, 3), mar = c(1, 1, 3, 4))
+    plot(R_hybrid, main = paste(ele, run, "Hybrid Suitability"), col = viridis(100), axes = FALSE)
+    plot(Sigma_total, main = paste(ele, run, "Uncertainty"), col = inferno(100), axes = FALSE)
+    plot(CSP, main = paste0(ele, " (n=", pop_size, ") CSP (MgC)"), col = viridis(100), axes = FALSE)
+    par(mfrow = c(1, 1))
+    dev.off()
+    stack_plot <- c(R_hybrid, Sigma_total, CSP, Lift)
+    names(stack_plot) <- c("Suitability", "Uncertainty", "CSP", "Lift")
+
+    df_plot <- as.data.frame(stack_plot, na.rm = TRUE)
     if (nrow(df_plot) > 50000) df_plot <- df_plot[sample(nrow(df_plot), 50000), ]
+    df_plot$Run <- run
 
-    p1 <- ggplot(df_plot, aes(x = Suitability, y = Uncertainty)) +
-      geom_point(alpha = 0.1, color = "#2c3e50") +
-      geom_smooth(method = "gam", color = "red", se = FALSE) +
+    # Store in list for this elephant
+    ele_plot_data[[run]] <- df_plot
+
+    message("  Run ", run, " processed.")
+  } # End Run Loop
+
+  # ====================================================
+  # Generate Comparative Plots (A vs B) for this Elephant
+  # ====================================================
+  if (length(ele_plot_data) > 0) {
+    all_data <- do.call(rbind, ele_plot_data)
+
+    # Ensure Run is a factor for proper ordering/coloring
+    all_data$Run <- factor(all_data$Run, levels = c(opt$tagA, opt$tagB))
+
+    fig_dir <- file.path(opt$outdir, ele, "figures")
+    dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+    # 1. Comparative Violin: Carbon Lift (The Elephant Effect)
+    # This isolates the signal from the base biomass noise
+    p_lift <- ggplot(all_data, aes(x = Run, y = Lift, fill = Run)) +
+      geom_violin(alpha = 0.7, trim = TRUE) +
+      geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+      scale_fill_manual(values = c("A" = "#E69F00", "B" = "#56B4E9")) +
       theme_minimal() +
       labs(
-        title = paste(ele, run, "- Uncertainty vs Suitability"),
-        x = "Hybrid Suitability", y = "Total Uncertainty"
+        title = paste(ele, "- Added Carbon (Lift) Comparison"),
+        subtitle = paste("Population:", pop_size),
+        y = "Added Carbon (MgC)", x = "Run"
       )
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Violin_Lift.png", ele)), p_lift, width = 6, height = 6)
 
-    ggsave(file.path(fig_dir, sprintf("%s_%s_Scatter_Uncertainty_vs_Suitability.png", ele, run)), p1, width = 6, height = 5)
+    # 2. Comparative Violin: Total CSP
+    p_csp <- ggplot(all_data, aes(x = Run, y = CSP, fill = Run)) +
+      geom_violin(alpha = 0.7, trim = TRUE) +
+      geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+      scale_fill_manual(values = c("A" = "#009E73", "B" = "#CC79A7")) +
+      theme_minimal() +
+      labs(
+        title = paste(ele, "- Total CSP Comparison"),
+        subtitle = "Includes Base Biomass + Elephant Lift",
+        y = "Total Carbon Potential (MgC)", x = "Run"
+      )
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Violin_CSP.png", ele)), p_csp, width = 6, height = 6)
 
-    message("  Done.")
+    # 3. Comparative Scatter: Uncertainty vs Suitability
+    p_scatter <- ggplot(all_data, aes(x = Suitability, y = Uncertainty, color = Run)) +
+      geom_point(alpha = 0.1, size = 0.5) +
+      geom_smooth(method = "gam", se = FALSE) +
+      scale_color_manual(values = c("A" = "#E69F00", "B" = "#56B4E9")) +
+      theme_minimal() +
+      labs(
+        title = paste(ele, "- Uncertainty vs Suitability"),
+        x = "Hybrid Suitability", y = "Uncertainty"
+      )
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_Uncertainty.png", ele)), p_scatter, width = 7, height = 5)
+
+    # Clean up for next elephant
+    rm(ele_plot_data)
   }
-}
+} # End Elephant Loop
 message("\nAll Phase 4/5 processing complete.")

@@ -26,8 +26,8 @@ set_mode <- function(cfg) {
 # Default value operator: return b if a is NULL
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
-# Generate a deterministic seed from a text tag
-# This ensures the same tag always produces the same seed
+# deterministic seed from a text tag
+# ensures same tag always produces the same seed
 seed_for <- function(tag, base = 1L) {
   h <- sum(utf8ToInt(as.character(tag))) + as.integer(base)
   h <- as.integer(abs(h) %% .Machine$integer.max)

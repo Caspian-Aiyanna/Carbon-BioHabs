@@ -1,4 +1,4 @@
-# Three-Method Comparison: H2O vs SSDM vs SSF
+# Three-Method Comparison: H2O vs SSDM vs iSSA
 # Compares habitat suitability predictions across three modeling frameworks
 # Handles both single predictions and replicates with flexible file discovery
 # Output: Correlation metrics, difference maps, and hotspot overlap statistics

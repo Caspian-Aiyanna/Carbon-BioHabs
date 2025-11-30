@@ -19,7 +19,7 @@
 # - renv (initialized)
 # ==============================================================================
 
-# 1. Load Modules (Adjust these names based on your HPC environment)
+# 1. Load Modules
 # module load R/4.3.0
 # module load gdal/3.6.2
 # module load java/11  # Required for H2O

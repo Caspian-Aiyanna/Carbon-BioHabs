@@ -1,12 +1,10 @@
 # BioHabs Project Structure - Path Configuration
 
-## ✅ VERIFIED: All scripts now use correct paths
-
 ### Project Root Structure
 ```
 BTEH/BTEH/                          # Project root (.root)
 ├── BioHabs/                        # Scripts directory
-│   ├── data/                       # ⚠️ DATA IS HERE (not at root)
+│   ├── data/                       # INPUT DATA (not at root)
 │   │   ├── clean/                  # Cleaned GPS data
 │   │   │   ├── A/                  # After period
 │   │   │   ├── B/                  # Before period
@@ -22,17 +20,17 @@ BTEH/BTEH/                          # Project root (.root)
 │   │   │       └── *.tif
 │   │   ├── occ/                    # Occurrence data
 │   │   └── shp/                    # Shapefiles
-│   ├── 01_ssf_to_rasters.R        # ✅ FIXED
-│   ├── 01_a_iSSA.R                # ⚠️ NEEDS FIXING (syntax error)
-│   ├── 02_dbscan_thin_degrees.R   # ✅ OK (uses config)
-│   ├── 03_h2o_replicates.R        # ✅ OK (uses config)
-│   ├── 04_ssdm_replicates.R       # ✅ OK (uses config)
-│   ├── 05_methods_comparison.R    # ✅ OK (uses config)
-│   └── 06_uncertainity.R          # ✅ FIXED
-├── config.yml                      # ✅ FIXED - all paths now include BioHabs/
-├── results/                        # Output directory
-├── logs/                           # Log files
-└── replicates_DBSCAN/             # DBSCAN replicates
+│   ├── 01_ssf_to_rasters.R        # FIXED
+│   ├── 01_a_iSSA.R                
+│   ├── 02_dbscan_thin_degrees.R   
+│   ├── 03_h2o_replicates.R        
+│   ├── 04_ssdm_replicates.R       
+│   ├── 05_methods_comparison.R    
+│   └── 06_uncertainity.R          
+├── config.yml                      
+├── results/                        
+├── logs/                           
+└── replicates_DBSCAN/             
 
 ```
 
@@ -40,11 +38,11 @@ BTEH/BTEH/                          # Project root (.root)
 ```yaml
 paths:
   root: "."
-  envi_before: "BioHabs/data/envi/B"     # ✅ FIXED
-  envi_after:  "BioHabs/data/envi/A"     # ✅ FIXED
-  occ: "BioHabs/data/occ/thinned_DBSCAN" # ✅ FIXED
-  clean: "BioHabs/data/clean"            # ✅ FIXED
-  raw: "BioHabs/data/raw"                # ✅ FIXED
+  envi_before: "BioHabs/data/envi/B"     
+  envi_after:  "BioHabs/data/envi/A"     
+  occ: "BioHabs/data/occ/thinned_DBSCAN" 
+  clean: "BioHabs/data/clean"            
+  raw: "BioHabs/data/raw"                
   results_h2o: "results/H2O"
   results_ssdm: "results/SSDM"
   plans: "plans"
@@ -53,7 +51,7 @@ paths:
 
 ### Script Status
 
-#### ✅ Working Scripts
+#### Working Scripts
 1. **01_ssf_to_rasters.R** - Fixed paths, successfully ran for Run A (E3A, E4A, E5A)
 2. **02_dbscan_thin_degrees.R** - Uses config paths correctly
 3. **03_h2o_replicates.R** - Uses config paths correctly
@@ -61,10 +59,7 @@ paths:
 5. **05_methods_comparison.R** - Just completed successfully for Run A
 6. **06_uncertainity.R** - Fixed to handle SSF replicates
 
-#### ⚠️ Needs Attention
-1. **01_a_iSSA.R** - Has syntax error (unexpected end of input at line 402)
-   - This is the NEW script for generating iSSA replicates with proper variance
-   - Needs to be completely rewritten/fixed
+
 
 ### How Scripts Resolve Paths
 

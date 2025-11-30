@@ -27,12 +27,11 @@ suppressPackageStartupMessages({
 .script <- dirname(.this_file())
 .root <- normalizePath(file.path(.script, ".."), winslash = "/", mustWork = TRUE)
 
-# Ensure we are in the project root so relative paths work
 setwd(.root)
 
-source(file.path(.root, "R", "utils_io.R")) # dir_ensure, log_line, %||%, safe_read_csv/safe_write_csv, skip_if_done
-source(file.path(.root, "R", "utils_repro.R")) # read_config, set_mode, seed_for
-source(file.path(.root, "R", "utils_kendall.R")) # kendall_plan
+source(file.path(.root, "R", "utils_io.R")) 
+source(file.path(.root, "R", "utils_repro.R")) 
+source(file.path(.root, "R", "utils_kendall.R")) 
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 sp_hash_int <- function(sp) sum(utf8ToInt(as.character(sp))) %% 10000L
@@ -117,11 +116,11 @@ env_stack <- raster::stack(as(Renv, "Raster"))
 names(env_stack) <- names(Renv)
 
 # --- algorithms & cores ------------------------------------------------------
-# Default lightweight algorithms (exclude RF and ANN which are memory-intensive)
+# Default lightweight algorithms (RF and ANN memory-intensive)
 algos_default <- c("GLM", "GBM", "MARS", "SVM", "CTA")
 
 if (toupper(cfg$mode) == "REPRO") {
-  # REPRO mode: Use all algorithms and more cores if safe
+  # REPRO mode: Use all algorithms and more cores
   algos <- c("GLM", "GBM", "RF", "MARS", "SVM", "ANN", "CTA")
   cores <- 1L # Keep 1 core for stability even in REPRO, or bump to 2 if confident
   reps <- 10L # More internal replicates for robustness
@@ -179,7 +178,7 @@ for (f in sort(all_rep)) {
   if (skip_if_done(out_dir, c(
     sprintf("ESDM_%s_rep%d.rds", sp, rep_idx),
     sprintf("ESDM_%s_rep%d.tif", sp, rep_idx)
-    # uncertainty is optional; don't gate on it
+    # uncertainty is optional;
   ))) {
     log_line(sprintf("Skip %s (rep %d) — required outputs present", sp, rep_idx), logf)
     next
@@ -222,14 +221,14 @@ for (f in sort(all_rep)) {
   esdm <- tryCatch(
     {
       if (toupper(cfg$mode) == "REPRO") {
-        # REPRO: 5 replicates, 1 core
+        # REPRO: 10 replicates, 1 core
         SSDM::ensemble_modelling(
           algorithms = algos,
           Occurrences = occ_ssdm,
           Env = env_use,
           Xcol = "lon",
           Ycol = "lat",
-          rep = 5,
+          rep = 10,
           cv = "holdout",
           cv.param = c(0.7, 2),
           ensemble.metric = "AUC",
@@ -240,7 +239,7 @@ for (f in sort(all_rep)) {
           verbose = FALSE
         )
       } else {
-        # FAST: 5 replicates, 1 core
+        # FAST: 5 replicates, 5 core
         SSDM::ensemble_modelling(
           algorithms = algos,
           Occurrences = occ_ssdm,
@@ -254,7 +253,7 @@ for (f in sort(all_rep)) {
           ensemble.thresh = 0.4,
           weight = TRUE,
           uncertainty = TRUE,
-          cores = 1,
+          cores = 5,
           verbose = FALSE
         )
       }

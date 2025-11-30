@@ -42,9 +42,7 @@ init_h2o <- function(cfg) {
   invisible(nthreads)
 }
 
-# Make predictions on a raster using an H2O model
-# Processes data in chunks to avoid memory issues
-# Returns a SpatRaster with predicted probabilities
+# H2O model Returns a SpatRaster with predicted probabilities
 predict_raster_h2o <- function(r, model, block_rows = 50000) {
   stopifnot(inherits(r, "SpatRaster"))
 
@@ -69,7 +67,7 @@ predict_raster_h2o <- function(r, model, block_rows = 50000) {
   return(out)
 }
 
-# Check if output files already exist (to skip redundant processing)
+# Check outputs to skip redundant processing
 skip_if_done <- function(dir, files) {
   all(file.exists(file.path(dir, files)))
 }

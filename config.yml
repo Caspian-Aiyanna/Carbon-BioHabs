@@ -2,20 +2,20 @@ mode: FAST         # REPRO or FAST
 
 h2o:
   nthreads_repro: 1
-  nthreads_fast: -2     # use all cores minus 2
+  nthreads_fast: -2   
   seed: 123
   automl:
-    include_algos_repro: [] # specify algorithms to include for REPRO mode
-    include_algos_fast: [] # best to leave empty for FAST mode (uses all available algorithms)
+    include_algos_repro: []
+    include_algos_fast: []
     max_models_repro: 100
     max_models_fast: 100
 
 ssdm:
   cores_repro: 1
-  cores_fast: 4         # NOTE: 04a_ssdm_replicates.R uses LITERAL value 4 (not read from config)
+  cores_fast: 4         # NOTE: 04a_ssdm_replicates.R uses integer values (not read from config)
   replications: 1
   algorithms: "GLM,GBM"  # Only fastest algorithms for minimal memory usage
-  internal_reps: 5      # NOTE: 04a_ssdm_replicates.R uses LITERAL value 5 (not read from config)
+  internal_reps: 5      # NOTE: 04a_ssdm_replicates.R uses integer values (not read from config)
 
 seeds:
   global: 123
@@ -30,7 +30,7 @@ spatial_cv:
 
 kendall:
   cutoff: 0.8
-  sample: 500           # Reduced for faster processing
+  sample: 500           
 
 paths:
   root: "."

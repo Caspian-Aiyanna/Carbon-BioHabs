@@ -2,7 +2,6 @@
 # BioHabs Environment Setup (renv)
 # ==============================================================================
 # Run this script ONCE to initialize the reproducible environment.
-# It will:
 # 1. Install 'renv' if missing
 # 2. Initialize the project
 # 3. Discover dependencies
@@ -30,5 +29,5 @@ renv::snapshot(prompt = FALSE)
 
 message("\n==============================================================================")
 message("Setup Complete! 'renv.lock' has been created.")
-message("To reproduce this environment on HPC, run: Rscript -e 'renv::restore()'")
+message("HPC reproducibility: Rscript -e 'renv::restore()'")
 message("==============================================================================")

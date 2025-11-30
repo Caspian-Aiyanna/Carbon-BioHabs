@@ -1,6 +1,5 @@
 # iSSA!
 ### 1. iSSA Movement Covariates
-
 Script includes **Signer et al. (2024) movement covariates:
 
 ```R
@@ -9,7 +8,7 @@ sl_        # Step length (how far elephant moved)
 log_sl_    # Log step length (gamma distribution)
 cos_ta_    # Cosine turn angle (directional persistence)
 
-# Habitat terms (existing)
+# Habitat terms
 bio1_z, bio12_z, Elevation_z, NDVI_z, ...
 
 # Model formula (iSSA)
@@ -48,26 +47,21 @@ case_ ~ sl_ + log_sl_ + cos_ta_ + bio1_z + bio12_z + ... + strata(step_id_)
 - Filters invalid steps before modeling
 ---
 
-## Still To Add (Optional)
+## Implemented Diagnostics
+The following advanced diagnostics have been added to `01_a_iSSA.R`:
 
-The following diagnostics are **partially implemented** but could be enhanced:
+### Partial Response Plots
+- Implemented for both Habitat and Movement variables
+- Visualizes relative selection strength (RSS)
 
-### 📊 Partial Response Plots
-- ✅ Already exists for habitat variables
-- ➕ Could add for movement variables
+### Model Diagnostics
+- Convergence check
+- VIF (Variance Inflation Factor) - Custom implementation (no extra deps)
+- 5-fold Cross-Validation (CV) - Reports log-likelihood
 
-### 📊 Model Diagnostics
-- ✅ Convergence check (exists)
-- ➕ VIF (Variance Inflation Factor) - needs car package
-- ➕ Residual diagnostics
-
-### 📊 Step Selection Kernels
-- ❌ Not implemented (requires simulation)
-- Would show 2D movement probability surfaces
-
-### 📊 Validation Metrics
-- ❌ Not implemented
-- Could add: k-fold CV, AUC, TSS
+### Step Selection Kernels
+- requires simulation
+- if implemented can show 2D movement probability surfaces
 
 ---
 
@@ -85,7 +79,7 @@ Rscript BioHabs/01_a_iSSA.R --run B --mode FAST
 
 ## Output Changes
 
-### New in Coefficient Tables
+### Coefficient Tables
 ```csv
 variable,covariate_type,beta,se,z,p,ci_lo,ci_hi
 sl_,Movement,0.0023,0.0001,23.5,<0.001,0.0021,0.0025
@@ -104,8 +98,7 @@ NDVI_z,Habitat,0.42,0.05,8.4,<0.001,0.32,0.52
 
 ## Scientific Impact
 
-This is now a **publication-ready iSSA** that:
-- Signer et al. (2024) protocol
+**iSSA - Signer et al. (2024) protocol**
 - Separates movement from habitat selection
 - Provides mechanistic insights into elephant behavior
 

@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
     library(scales)
 })
 
-# Detect script location and project root
+# script location and project root
 .this_file <- function() {
     args <- commandArgs(trailingOnly = FALSE)
     filearg <- grep("^--file=", args, value = TRUE)
@@ -33,13 +33,11 @@ suppressPackageStartupMessages({
 .script <- dirname(.this_file())
 .root <- normalizePath(file.path(.script, ".."), winslash = "/", mustWork = TRUE)
 
-# Ensure we are in the project root so relative paths work
 setwd(.root)
 
 source(file.path(.root, "R", "utils_io.R"))
 source(file.path(.root, "R", "utils_repro.R"))
 
-# Command-line options
 opt <- list(
     make_option(c("--run"), type = "character", default = "A", help = "Run tag: A or B [default: %default]"),
     make_option(c("--mode"), type = "character", default = "REPRO", help = "REPRO or FAST (overrides config.yml)"),
@@ -160,6 +158,94 @@ theme_pub <- function() {
             plot.title = element_text(face = "bold"),
             axis.title = element_text(face = "bold")
         )
+}
+
+# ============================ DIAGNOSTIC HELPERS ==============================
+# Calculate VIF manually (avoids 'car' dependency)
+calc_vif <- function(model) {
+    tryCatch(
+        {
+            mm <- model.matrix(model)
+            # Remove intercept if present (clogit doesn't have one)
+            if ("(Intercept)" %in% colnames(mm)) mm <- mm[, -which(colnames(mm) == "(Intercept)"), drop = FALSE]
+
+            n_vars <- ncol(mm)
+            if (n_vars < 2) {
+                return(setNames(rep(NA, n_vars), colnames(mm)))
+            }
+
+            vifs <- numeric(n_vars)
+            names(vifs) <- colnames(mm)
+
+            for (i in 1:n_vars) {
+                y <- mm[, i]
+                x <- mm[, -i, drop = FALSE]
+                r2 <- summary(lm(y ~ x))$r.squared
+                vifs[i] <- 1 / (1 - r2)
+            }
+            vifs
+        },
+        error = function(e) {
+            warning("VIF calculation failed: ", e$message)
+            NULL
+        }
+    )
+}
+
+# k-fold Cross Validation for iSSA
+run_cv <- function(data, formula, k = 5) {
+    tryCatch(
+        {
+            # Split by strata (step_id_) to keep case/control groups together
+            strata_ids <- unique(data$step_id_)
+            n_strata <- length(strata_ids)
+            if (n_strata < k) {
+                return(NULL)
+            }
+
+            folds <- sample(rep(1:k, length.out = n_strata))
+            cv_res <- numeric(k)
+
+            for (i in 1:k) {
+                test_strata <- strata_ids[folds == i]
+                train_data <- data %>% filter(!step_id_ %in% test_strata)
+                test_data <- data %>% filter(step_id_ %in% test_strata)
+
+                # Fit model on training
+                m <- survival::clogit(formula, data = train_data)
+
+                # Predict on test (risk score)
+                # Note: predict(..., type="risk") gives exp(Xb)
+                # But we need to handle new levels in strata if any (though strata shouldn't matter for Xb)
+                pred <- predict(m, newdata = test_data, type = "risk")
+
+                # Calculate conditional log-likelihood for test set
+                # For each stratum: P(case) = exp(Xb_case) / sum(exp(Xb_all))
+                test_data$risk <- pred
+
+                loglik <- test_data %>%
+                    group_by(step_id_) %>%
+                    summarize(
+                        prob = risk[case_ == 1] / sum(risk),
+                        .groups = "drop"
+                    ) %>%
+                    summarize(ll = sum(log(prob))) %>%
+                    pull(ll)
+
+                cv_res[i] <- loglik
+            }
+
+            list(
+                mean_ll = mean(cv_res),
+                se_ll = sd(cv_res) / sqrt(k),
+                folds = k
+            )
+        },
+        error = function(e) {
+            warning("CV failed: ", e$message)
+            NULL
+        }
+    )
 }
 
 # ============================ CORE PER-FILE PROCESS ===========================
@@ -435,16 +521,103 @@ process_one_file <- function(run_tag, stack_path, csv_file, out_base, i_seed = 0
             readr::write_csv(beta_tbl, file.path(out_dir, "model_coefficients_and_scaling.csv"))
             capture.output(sm, file = file.path(out_dir, "clogit_summary.txt"))
 
+            # ---------- Enhanced Diagnostics ----------
+            # 1. VIF
+            vifs <- calc_vif(model_clogit)
+            if (!is.null(vifs)) {
+                vif_df <- tibble(variable = names(vifs), vif = vifs)
+                readr::write_csv(vif_df, file.path(out_dir, "diagnostics_vif.csv"))
+                log_msg("Calculated VIFs.")
+            }
+
+            # 2. Cross-Validation (5-fold)
+            cv_res <- run_cv(ssf_data, fml, k = 5)
+            if (!is.null(cv_res)) {
+                cv_txt <- sprintf("5-fold CV Log-Likelihood: %.2f (SE: %.2f)", cv_res$mean_ll, cv_res$se_ll)
+                writeLines(cv_txt, file.path(out_dir, "diagnostics_cv.txt"))
+                log_msg(paste("CV Result:", cv_txt))
+            }
+
+            # ---------- Partial Response Plots (Habitat + Movement) ----------
+            # Select top variables by absolute z-score
+            top_vars <- beta_tbl %>%
+                arrange(desc(abs(z))) %>%
+                slice_head(n = max_vars_partial) %>%
+                pull(variable)
+
+            # Ensure movement vars are considered for plotting if significant
+            # (They are already in beta_tbl, so they will be picked up if z-score is high)
+
+            if (length(top_vars) > 0) {
+                pdf(file.path(out_dir, "partial_response_plots.pdf"), width = fig_width, height = fig_height)
+
+                for (v in top_vars) {
+                    # Handle movement vs habitat variables differently for range
+                    is_move <- v %in% c("sl_", "log_sl_", "cos_ta_")
+
+                    # Construct range for prediction
+                    if (is_move) {
+                        # Use observed range from data
+                        vals <- seq(min(ssf_data[[v]], na.rm = TRUE), max(ssf_data[[v]], na.rm = TRUE), length.out = 100)
+                    } else {
+                        # Habitat vars are z-scaled, so -3 to 3 is reasonable
+                        vals <- seq(-3, 3, length.out = 100)
+                    }
+
+                    # Create prediction data frame
+                    # Set all other vars to their mean (0 for z-scores, mean for movement)
+                    pred_df <- ssf_data[rep(1, 100), ]
+                    # Reset all predictors to mean/0
+                    for (vn in all_terms) {
+                        if (vn %in% movement_terms) {
+                            pred_df[[vn]] <- mean(ssf_data[[vn]], na.rm = TRUE)
+                        } else {
+                            pred_df[[vn]] <- 0
+                        }
+                    }
+                    # Vary the target variable
+                    pred_df[[v]] <- vals
+
+                    # Predict relative selection strength (RSS)
+                    # exp(beta * x) ignoring intercept/strata
+                    beta_val <- beta_tbl$beta[beta_tbl$variable == v]
+                    # Note: This is a simplified partial plot (marginal effect)
+                    # RSS = exp(beta * (x - mean))
+                    # Since we centered x around mean/0, it's just exp(beta * x) relative to x=0/mean
+
+                    # Actually, for correct RSS, we compare x to a reference x0.
+                    # Let's use the mean as reference.
+                    ref_val <- if (is_move) mean(ssf_data[[v]], na.rm = TRUE) else 0
+                    rss <- exp(beta_val * (vals - ref_val))
+
+                    p <- ggplot(data.frame(x = vals, y = rss), aes(x, y)) +
+                        geom_line(color = "blue", size = 1) +
+                        labs(
+                            title = paste("Partial Response:", pretty_var(v)),
+                            subtitle = sprintf("Beta = %.3f (z = %.1f)", beta_val, beta_tbl$z[beta_tbl$variable == v]),
+                            x = if (is_move) v else paste(v, "(z-score)"),
+                            y = "Relative Selection Strength (RSS)"
+                        ) +
+                        theme_pub()
+                    print(p)
+                }
+                dev.off()
+                log_msg("Generated partial response plots.")
+            }
+
             # ---------- RSF projection (guard missing bands) ----------
+            # Filter for projection ONLY, preserving beta_tbl for plots
             avail <- intersect(beta_tbl$variable, names(r_stack))
             if (length(avail) == 0) stop("No model covariates found in raster stack for projection.")
-            beta_tbl <- beta_tbl %>% filter(variable %in% avail)
+
+            # Use a subset for projection calculations
+            beta_proj <- beta_tbl %>% filter(variable %in% avail)
             sel <- r_stack[[avail]]
 
-            mu_vec <- beta_tbl$mean
-            sd_vec <- beta_tbl$sd
+            mu_vec <- beta_proj$mean
+            sd_vec <- beta_proj$sd
             sd_vec[!is.finite(sd_vec) | sd_vec == 0] <- 1
-            b_vec <- beta_tbl$beta
+            b_vec <- beta_proj$beta
 
             rsf <- terra::app(sel, fun = function(v) {
                 z <- (v - mu_vec) / sd_vec
@@ -459,7 +632,7 @@ process_one_file <- function(run_tag, stack_path, csv_file, out_base, i_seed = 0
             terra::writeRaster(rsf, out_tif, overwrite = TRUE, wopt = list(datatype = "FLT4S", gdal = "COMPRESS=LZW"))
             terra::writeRaster(rsf01, out_tif01, overwrite = TRUE, wopt = list(datatype = "FLT4S", gdal = "COMPRESS=LZW"))
 
-            # ===================== DIAGNOSTIC PLOTS (journal-ready) ===================
+            # ===================== DIAGNOSTIC PLOTS ===================
             if (nrow(beta_tbl) > 0) {
                 coef_df <- beta_tbl %>%
                     mutate(variable_label = pretty_var(variable)) %>%
@@ -468,7 +641,7 @@ process_one_file <- function(run_tag, stack_path, csv_file, out_base, i_seed = 0
 
                 p_coef <- ggplot(coef_df, aes(x = beta, y = variable_label)) +
                     geom_vline(xintercept = 0, linetype = 2) +
-                    geom_errorbarh(aes(xmin = ci_lo, xmax = ci_hi), height = 0) +
+                    geom_errorbarh(aes(xmin = ci_lo, xmax = ci_hi), width = 0) +
                     geom_point(size = 2) +
                     labs(
                         title = paste0("SSF coefficients (", run_tag, " — ", tag, ")"),
@@ -488,45 +661,49 @@ process_one_file <- function(run_tag, stack_path, csv_file, out_base, i_seed = 0
                 ggsave(file.path(out_dir, "var_importance.png"), p_vi, width = fig_width, height = fig_height, dpi = dpi)
 
                 top_vars <- head(coef_df$variable, min(10, nrow(coef_df)))
-                dens_df <- ssf_data %>%
-                    select(case_, all_of(paste0(top_vars, "_z"))) %>%
-                    mutate(case_ = factor(case_, levels = c(0, 1), labels = c("available", "used"))) %>%
-                    pivot_longer(cols = -case_, names_to = "variable", values_to = "value") %>%
-                    mutate(
-                        variable = sub("_z$", "", variable),
-                        variable = factor(pretty_var(variable), levels = pretty_var(top_vars))
-                    )
+                # Only plot densities for habitat variables (z-scores)
+                # Movement vars don't have z-scores in the same way in ssf_data (they are raw sl_, log_sl_, cos_ta_)
+                # But we named them with _z suffix in the model? No, movement vars are raw.
+                # Let's filter top_vars to only those present in ssf_data with _z suffix or exact match
 
-                p_dens <- ggplot(dens_df, aes(x = value, fill = case_)) +
-                    geom_density(alpha = 0.5) +
-                    facet_wrap(~variable, scales = "free", ncol = 3) +
-                    labs(
-                        title = paste0("Endpoint covariate densities (z) — ", run_tag, " — ", tag),
-                        x = "z-score", y = "Density", fill = NULL
-                    ) +
-                    theme_pub()
-                ggsave(file.path(out_dir, "covariate_densities.png"), p_dens, width = fig_width, height = fig_height, dpi = dpi)
+                # Check which top vars are habitat (have _z suffix in data)
+                hab_vars <- top_vars[paste0(top_vars, "_z") %in% names(ssf_data)]
 
-                pr_grid <- seq(-3, 3, length.out = 100)
-                top_pr_vars <- head(coef_df$variable, min(max_vars_partial, nrow(coef_df)))
-                pr_list <- lapply(top_pr_vars, function(v) {
-                    lp <- pr_grid * coef_df$beta[coef_df$variable == v]
-                    tibble(variable = pretty_var(v), z = pr_grid, RSF_rel = exp(lp))
-                })
-                pr_df <- bind_rows(pr_list)
+                if (length(hab_vars) > 0) {
+                    dens_df <- ssf_data %>%
+                        select(case_, all_of(paste0(hab_vars, "_z"))) %>%
+                        mutate(case_ = factor(case_, levels = c(0, 1), labels = c("available", "used"))) %>%
+                        pivot_longer(cols = -case_, names_to = "variable", values_to = "value") %>%
+                        mutate(
+                            variable = sub("_z$", "", variable),
+                            variable = factor(pretty_var(variable), levels = pretty_var(hab_vars))
+                        )
 
-                p_pr <- ggplot(pr_df, aes(x = z, y = RSF_rel)) +
-                    geom_line() +
-                    facet_wrap(~variable, scales = "free_y", ncol = 3) +
-                    labs(
-                        title = paste0("Partial responses (others at mean) — ", run_tag, " — ", tag),
-                        x = "z-score of focal variable", y = "RSF (relative)"
-                    ) +
-                    theme_pub()
-                ggsave(file.path(out_dir, "partial_responses.png"), p_pr, width = fig_width, height = fig_height, dpi = dpi)
+                    p_dens <- ggplot(dens_df, aes(x = value, fill = case_)) +
+                        geom_density(alpha = 0.5) +
+                        facet_wrap(~variable, scales = "free", ncol = 3) +
+                        labs(
+                            title = paste0("Endpoint covariate densities (z) — ", run_tag, " — ", tag),
+                            x = "z-score", y = "Density", fill = NULL
+                        ) +
+                        theme_pub()
+                    ggsave(file.path(out_dir, "covariate_densities.png"), p_dens, width = fig_width, height = fig_height, dpi = dpi)
+                }
+
+                # (Old partial response plot removed - superseded by new PDF)
 
                 # Win rate
-                Xz <- as.matrix(ssf_data[, paste0(coef_df$variable, "_z"), drop = FALSE])
+                # Construct predictor matrix (handle movement vs habitat var names)
+                vars <- coef_df$variable
+                col_names <- sapply(vars, function(v) {
+                    if (v %in% c("sl_", "log_sl_", "cos_ta_")) v else paste0(v, "_z")
+                })
+
+                # Check if all columns exist
+                missing_cols <- setdiff(col_names, names(ssf_data))
+                if (length(missing_cols) > 0) stop("Missing columns for Win Rate: ", paste(missing_cols, collapse = ", "))
+
+                Xz <- as.matrix(ssf_data[, col_names, drop = FALSE])
                 lp <- drop(Xz %*% matrix(coef_df$beta, ncol = 1))
                 pred_rsf <- exp(lp)
 

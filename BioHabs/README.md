@@ -65,7 +65,7 @@ can also run individual stages if needed:
 
 ```bash
 # Example: Run Stage 1 for Run A in FAST mode
-Rscript BioHabs/01_ssf_to_rasters.R --run A --mode FAST
+Rscript BioHabs/01_a_iSSA.R --run A --mode FAST
 
 # Example: Run Stage 6 (Uncertainty)
 Rscript BioHabs/06_uncertainty.R
