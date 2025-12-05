@@ -4,7 +4,7 @@
 # 1. Loads H2O/SSDM replicates + SSF single
 # 2. Calculates Hybrid Ensemble (Inverse Variance Weighted)
 # 3. Decomposes Uncertainty
-# 4. Calculates Carbon Sequestration Potential (CSP)
+
 
 suppressPackageStartupMessages({
   library(optparse)
@@ -200,40 +200,10 @@ for (ele in elephants) {
     Sigma_total <- sqrt(Var_within + Var_between_contribution)
     names(Sigma_total) <- "Uncertainty_Total"
 
-    # 5. Carbon Sequestration Potential (CSP)
+    # 5. Carbon Sequestration Potential (CSP) - REMOVED
     # ---------------------------------------
-    agb_file <- first_existing(
-      "BioHabs/data/envi/raw/ORNL_Total_Carbon_2010_30m.tif",
-      "BioHabs/data/envi/raw/ORNL_AGB_Carbon_2010_30m.tif",
-      file.path(opt$env_dir, "raw", "ORNL_Total_Carbon_2010_30m.tif"),
-      file.path(opt$env_dir, run, "AGB.tif"),
-      file.path(opt$env_dir, run, "Biomass.tif"),
-      file.path(opt$env_dir, "AGB.tif")
-    )
+    # Concept removed as per user request.
 
-    if (!is.null(agb_file)) {
-      r_agb <- rast(agb_file)
-      r_agb <- resample(r_agb, template)
-      Base_Carbon <- r_agb # Assuming AGB is the baseline
-    } else {
-      message("  [WARN] AGB/Biomass layer not found. Using constant baseline (100).")
-      Base_Carbon <- template * 0 + 100
-    }
-
-    # Define population size based on elephant ID (Herds vs Bulls)
-    # E3=30, E4=20, E5=20 (Herds); Others=1 (Bulls)
-    pop_size <- switch(ele,
-      "E3" = 30,
-      "E4" = 20,
-      "E5" = 20,
-      1
-    )
-
-    Elephant_Effect <- 1.5 # MgC/yr per elephant
-    CSP <- Base_Carbon + (Elephant_Effect * pop_size * R_hybrid)
-    names(CSP) <- "CSP"
-
-    message(sprintf("  Calculating CSP with Population Size: %d (Max Effect: %.1f MgC)", pop_size, 1.5 * pop_size))
 
     # 6. Save Outputs
     # ---------------
@@ -242,13 +212,6 @@ for (ele in elephants) {
 
     writeRaster(R_hybrid, file.path(out_dir, sprintf("%s_%s_Hybrid_Ensemble.tif", ele, run)), overwrite = TRUE)
     writeRaster(Sigma_total, file.path(out_dir, sprintf("%s_%s_Uncertainty_Total.tif", ele, run)), overwrite = TRUE)
-    writeRaster(CSP, file.path(out_dir, sprintf("%s_%s_CSP.tif", ele, run)), overwrite = TRUE)
-
-    # Calculate "Lift" (Added Carbon)
-    Lift <- Elephant_Effect * pop_size * R_hybrid
-    names(Lift) <- "Carbon_Lift"
-
-    writeRaster(Lift, file.path(out_dir, sprintf("%s_%s_Carbon_Lift.tif", ele, run)), overwrite = TRUE)
 
     # Save plots
     fig_dir <- file.path(opt$outdir, ele, "figures")
@@ -263,24 +226,30 @@ for (ele in elephants) {
     plot(Sigma_total, main = paste(ele, run, "Total Uncertainty"), col = inferno(100), axes = FALSE)
     dev.off()
 
-    png(file.path(fig_dir, sprintf("%s_%s_CSP.png", ele, run)), width = 1200, height = 1000, res = 150)
-    plot(CSP, main = paste0(ele, " (n=", pop_size, ") ", run, " CSP (MgC)"), col = viridis(100), axes = FALSE)
-    dev.off()
+    # Combined Panel Plot (Hybrid | Uncertainty)
+    # ------------------------------------------
+    # Create a summary folder for all runs
+    summary_dir <- file.path(opt$outdir, "all_run_panels")
+    dir.create(summary_dir, recursive = TRUE, showWarnings = FALSE)
 
-    png(file.path(fig_dir, sprintf("%s_%s_Carbon_Lift.png", ele, run)), width = 1200, height = 1000, res = 150)
-    plot(Lift, main = paste0(ele, " (n=", pop_size, ") ", run, " Added Carbon (MgC)"), col = viridis(100), axes = FALSE)
-    dev.off()
+    panel_path <- file.path(fig_dir, sprintf("%s_%s_Panel.png", ele, run))
+    summary_path <- file.path(summary_dir, sprintf("%s_%s_Panel.png", ele, run))
 
-    # Combined Panel Plot (Hybrid | Uncertainty | CSP)
-    png(file.path(fig_dir, sprintf("%s_%s_Panel.png", ele, run)), width = 3000, height = 1000, res = 150)
-    par(mfrow = c(1, 3), mar = c(1, 1, 3, 4))
+    png(panel_path, width = 2000, height = 1000, res = 150)
+    par(mfrow = c(1, 2), mar = c(1, 1, 3, 4))
     plot(R_hybrid, main = paste(ele, run, "Hybrid Suitability"), col = viridis(100), axes = FALSE)
     plot(Sigma_total, main = paste(ele, run, "Uncertainty"), col = inferno(100), axes = FALSE)
-    plot(CSP, main = paste0(ele, " (n=", pop_size, ") CSP (MgC)"), col = viridis(100), axes = FALSE)
     par(mfrow = c(1, 1))
     dev.off()
-    stack_plot <- c(R_hybrid, Sigma_total, CSP, Lift)
-    names(stack_plot) <- c("Suitability", "Uncertainty", "CSP", "Lift")
+
+    # Copy to summary folder
+    file.copy(panel_path, summary_path, overwrite = TRUE)
+
+
+    # Collect data for advanced plotting
+    # Stack: Hybrid, Uncertainty, H2O, SSDM, SSF
+    stack_plot <- c(R_hybrid, Sigma_total, M_h2o, M_ssdm, M_ssf)
+    names(stack_plot) <- c("Hybrid", "Uncertainty", "H2O", "SSDM", "SSF")
 
     df_plot <- as.data.frame(stack_plot, na.rm = TRUE)
     if (nrow(df_plot) > 50000) df_plot <- df_plot[sample(nrow(df_plot), 50000), ]
@@ -304,44 +273,112 @@ for (ele in elephants) {
     fig_dir <- file.path(opt$outdir, ele, "figures")
     dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
-    # 1. Comparative Violin: Carbon Lift (The Elephant Effect)
-    # This isolates the signal from the base biomass noise
-    p_lift <- ggplot(all_data, aes(x = Run, y = Lift, fill = Run)) +
-      geom_violin(alpha = 0.7, trim = TRUE) +
-      geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
-      scale_fill_manual(values = c("A" = "#E69F00", "B" = "#56B4E9")) +
+    # ---------------------------------------------------------
+    # 1. Pairwise Method Comparisons (Scatter Plots)
+    # ---------------------------------------------------------
+    # H2O vs SSDM
+    p_h2o_ssdm <- ggplot(all_data, aes(x = H2O, y = SSDM, color = Run)) +
+      geom_point(alpha = 0.1, size = 0.5) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+      scale_color_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
       theme_minimal() +
-      labs(
-        title = paste(ele, "- Added Carbon (Lift) Comparison"),
-        subtitle = paste("Population:", pop_size),
-        y = "Added Carbon (MgC)", x = "Run"
-      )
-    ggsave(file.path(fig_dir, sprintf("%s_Compare_Violin_Lift.png", ele)), p_lift, width = 6, height = 6)
+      labs(title = paste(ele, "- H2O vs SSDM Suitability"), x = "H2O", y = "SSDM")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_H2O_SSDM.png", ele)), p_h2o_ssdm, width = 6, height = 6)
 
-    # 2. Comparative Violin: Total CSP
-    p_csp <- ggplot(all_data, aes(x = Run, y = CSP, fill = Run)) +
-      geom_violin(alpha = 0.7, trim = TRUE) +
-      geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
-      scale_fill_manual(values = c("A" = "#009E73", "B" = "#CC79A7")) +
+    # H2O vs SSF
+    p_h2o_ssf <- ggplot(all_data, aes(x = H2O, y = SSF, color = Run)) +
+      geom_point(alpha = 0.1, size = 0.5) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+      scale_color_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
       theme_minimal() +
-      labs(
-        title = paste(ele, "- Total CSP Comparison"),
-        subtitle = "Includes Base Biomass + Elephant Lift",
-        y = "Total Carbon Potential (MgC)", x = "Run"
-      )
-    ggsave(file.path(fig_dir, sprintf("%s_Compare_Violin_CSP.png", ele)), p_csp, width = 6, height = 6)
+      labs(title = paste(ele, "- H2O vs SSF Suitability"), x = "H2O", y = "SSF")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_H2O_SSF.png", ele)), p_h2o_ssf, width = 6, height = 6)
 
-    # 3. Comparative Scatter: Uncertainty vs Suitability
-    p_scatter <- ggplot(all_data, aes(x = Suitability, y = Uncertainty, color = Run)) +
+    # SSDM vs SSF
+    p_ssdm_ssf <- ggplot(all_data, aes(x = SSDM, y = SSF, color = Run)) +
+      geom_point(alpha = 0.1, size = 0.5) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "gray") +
+      scale_color_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
+      theme_minimal() +
+      labs(title = paste(ele, "- SSDM vs SSF Suitability"), x = "SSDM", y = "SSF")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_SSDM_SSF.png", ele)), p_ssdm_ssf, width = 6, height = 6)
+
+    # ---------------------------------------------------------
+    # 2. Suitability vs Uncertainty (Scatter & Hexbin)
+    # ---------------------------------------------------------
+    p_suit_unc <- ggplot(all_data, aes(x = Hybrid, y = Uncertainty, color = Run)) +
       geom_point(alpha = 0.1, size = 0.5) +
       geom_smooth(method = "gam", se = FALSE) +
-      scale_color_manual(values = c("A" = "#E69F00", "B" = "#56B4E9")) +
+      scale_color_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
       theme_minimal() +
-      labs(
-        title = paste(ele, "- Uncertainty vs Suitability"),
-        x = "Hybrid Suitability", y = "Uncertainty"
-      )
-    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_Uncertainty.png", ele)), p_scatter, width = 7, height = 5)
+      labs(title = paste(ele, "- Hybrid Suitability vs Uncertainty"), x = "Hybrid Suitability", y = "Uncertainty")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Scatter_Suitability_Uncertainty.png", ele)), p_suit_unc, width = 7, height = 5)
+
+    # Hexbin version for density
+    p_hex <- ggplot(all_data, aes(x = Hybrid, y = Uncertainty)) +
+      geom_hex(bins = 50) +
+      scale_fill_viridis_c() +
+      facet_wrap(~Run) +
+      theme_minimal() +
+      labs(title = paste(ele, "- Suitability vs Uncertainty Density"), x = "Hybrid Suitability", y = "Uncertainty")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Hexbin_Suitability_Uncertainty.png", ele)), p_hex, width = 10, height = 5)
+
+    # ---------------------------------------------------------
+    # 3. Jaccard Threshold Analysis (0.75 Threshold)
+    # ---------------------------------------------------------
+    # Calculate Jaccard Index at threshold 0.75 for each pair in each run
+    threshold <- 0.75
+
+    calc_jaccard <- function(a, b, thresh) {
+      bin_a <- a > thresh
+      bin_b <- b > thresh
+      intersection <- sum(bin_a & bin_b, na.rm = TRUE)
+      union <- sum(bin_a | bin_b, na.rm = TRUE)
+      if (union == 0) {
+        return(0)
+      }
+      return(intersection / union)
+    }
+
+    jaccard_results <- data.frame()
+
+    for (r in unique(all_data$Run)) {
+      sub_data <- all_data[all_data$Run == r, ]
+
+      j_h2o_ssdm <- calc_jaccard(sub_data$H2O, sub_data$SSDM, threshold)
+      j_h2o_ssf <- calc_jaccard(sub_data$H2O, sub_data$SSF, threshold)
+      j_ssdm_ssf <- calc_jaccard(sub_data$SSDM, sub_data$SSF, threshold)
+
+      jaccard_results <- rbind(jaccard_results, data.frame(
+        Run = r,
+        Pair = c("H2O-SSDM", "H2O-SSF", "SSDM-SSF"),
+        Jaccard = c(j_h2o_ssdm, j_h2o_ssf, j_ssdm_ssf)
+      ))
+    }
+
+    # Bar plot of Jaccard Indices
+    p_jaccard <- ggplot(jaccard_results, aes(x = Pair, y = Jaccard, fill = Run)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      scale_fill_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
+      theme_minimal() +
+      labs(title = paste(ele, "- Jaccard Similarity (Threshold > 0.75)"), y = "Jaccard Index")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Bar_Jaccard_075.png", ele)), p_jaccard, width = 6, height = 5)
+
+    # ---------------------------------------------------------
+    # 4. Spindle Graphs (Violin Plots of Suitability Distributions)
+    # ---------------------------------------------------------
+    # Reshape for violin plot
+    long_data <- all_data %>%
+      select(Run, H2O, SSDM, SSF, Hybrid) %>%
+      pivot_longer(cols = c(H2O, SSDM, SSF, Hybrid), names_to = "Method", values_to = "Suitability")
+
+    p_violin <- ggplot(long_data, aes(x = Method, y = Suitability, fill = Run)) +
+      geom_violin(alpha = 0.7, trim = TRUE, scale = "width") +
+      geom_boxplot(width = 0.1, position = position_dodge(0.9), fill = "white", outlier.shape = NA) +
+      scale_fill_manual(values = c("A" = "blue", "B" = "#FF7F7F")) +
+      theme_minimal() +
+      labs(title = paste(ele, "- Suitability Distributions (Spindle/Violin)"), y = "Suitability")
+    ggsave(file.path(fig_dir, sprintf("%s_Compare_Violin_Suitability.png", ele)), p_violin, width = 8, height = 6)
 
     # Clean up for next elephant
     rm(ele_plot_data)

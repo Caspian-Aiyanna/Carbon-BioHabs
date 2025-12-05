@@ -6,6 +6,7 @@
 *.Rproj
 
 # Output directories
+# Note: Results are accessible to the webapp but not committed to git
 results/
 paper_results/
 logs/

@@ -624,8 +624,17 @@ process_one_file <- function(run_tag, stack_path, csv_file, out_base, i_seed = 0
                 exp(sum(z * b_vec))
             })
 
-            g <- terra::global(rsf, fun = c("min", "max"), na.rm = TRUE)
-            rsf01 <- if (isTRUE(all.equal(g[1, 1], g[1, 2]))) rsf * 0 else (rsf - g[1, 1]) / (g[1, 2] - g[1, 1])
+            # Robust scaling: clip top 0.1% outliers to avoid compressing the visual range
+            # This addresses the "lightly plotted" issue where a few high pixels suppress the rest
+            q_high <- terra::global(rsf, fun = function(x) quantile(x, probs = 0.999, na.rm = TRUE))[[1]]
+            rsf_robust <- terra::clamp(rsf, upper = q_high)
+
+            g_rob <- terra::global(rsf_robust, fun = c("min", "max"), na.rm = TRUE)
+            rsf01 <- if (isTRUE(all.equal(g_rob[1, 1], g_rob[1, 2]))) {
+                rsf_robust * 0
+            } else {
+                (rsf_robust - g_rob[1, 1]) / (g_rob[1, 2] - g_rob[1, 1])
+            }
 
             out_tif <- file.path(out_dir, paste0(tag, "_SSF_rsf.tif"))
             out_tif01 <- file.path(out_dir, paste0(tag, "_SSF_rsf_0to1.tif"))
